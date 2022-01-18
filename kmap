@@ -1,13 +1,8 @@
 #!/usr/bin/env bash -e
 
-consoleLogger() {
-
-    tee /dev/stderr
-}
-
-bashShellSink() {
-
-    bash
+serialInputSource() {
+    # configure the serial port with the correct baudrate and start reading the input
+    stty -f $1 $2 & readSerialInput $1
 }
 
 readSerialInput() {
@@ -22,13 +17,22 @@ readSerialInput() {
 
 IRRemoteMediaKeySimulationTransform() {
     # OSX Keycode mappings: http://macbiblioblog.blogspot.com/2014/12/key-codes-for-function-and-special-keys.html
+    # for each key we want to map we need add one line below to map from the input key name to the keycode we want to simulate
     sed -u 's/\r//' | sed -run $'s/BUTTON_VOL_PLUS/126/p;
     s/BUTTON_VOL_MINUS/125/p;
     ' | sed -ru "s/^(.*)/osascript -e 'tell application \"System Events\" to key code \\1'/"
+    # generate the OSX apple script command to actually simulate the key press of the corresponding keycode
+    # This command would later be executed using bash shell
 }
 
-serialInputSource() {
-    stty -f $1 $2 & readSerialInput $1
+consoleLogger() {
+
+    tee /dev/stderr
+}
+
+bashShellSink() {
+
+    bash
 }
 
 ESP32DEVICE=/dev/cu.SLAB_USBtoUART
@@ -36,7 +40,7 @@ ESP8266DEVICE=$(ls /dev/cu.usbserial* | head -n1)
 BAUDRATE=9600
 
 simulateMediaInputUsingSerialInput() {
-    serialInputSource $ESP8266DEVICE $BAUDRATE | IRRemoteMediaKeySimulationTransform | consoleLogger | bash
+    serialInputSource $ESP8266DEVICE $BAUDRATE | IRRemoteMediaKeySimulationTransform | consoleLogger | bashShellSink
 }
 
 simulateMediaInputUsingSerialInput
