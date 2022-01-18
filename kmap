@@ -1,64 +1,42 @@
 #!/usr/bin/env bash -e
 
-consoleInputSource() {
-    while [[ true ]]; do
-        chars=""
-        read -rd $'\0' -sn1 # read one character
-        while [[ "$REPLY" == " " || "$REPLY" == "~" || "$REPLY" > " " && "$REPLY" < "~" ]]; do
-            chars="$chars$REPLY";
-            read -rd $'\0' -t .5 -sn1 || true;
-        done # accumulate all ascii characters as one unit
-        echo "$chars"
-        chars=""
-        case "$REPLY" in
-            ($'\033')
-                chars="$REPLY"
-                while read -rd $'\0' -t .001 -sn1; do
-                    chars="$chars$REPLY";
-                done
-                echo "$chars"
-                ;;
-            ($'\n') chars=$'\x1BNEWLINE'; echo "$chars";;
-            ($'\x7f') chars=$'\x1B BACKSPACE'; echo "$chars";;
-            ($'\x14')
-                echo -n "$REPLY"
-                fzf --history=.kmap_history --history-size=100 --height=10 < keycodes.lst
-                ;;
-        esac
-    done
-}
-
-adbShellCommandsInputSimulateTransform() {
-    sed -run $'s/^([ -~]+)$/text "\\1"/p;
-    s/^\x1BNEWLINE/keyevent KEYCODE_ENTER/p;
-    s/^\x1B\\[A/keyevent KEYCODE_DPAD_UP/p;
-    s/^\x1B\\[B/keyevent KEYCODE_DPAD_DOWN/p;
-    s/^\x1B\\[C/keyevent KEYCODE_DPAD_RIGHT/p;
-    s/^\x1B\\[D/keyevent KEYCODE_DPAD_LEFT/p;
-    s/^\x1B\\[1;5A/keyevent KEYCODE_VOLUME_UP/p;
-    s/^\x1B\\[1;5B/keyevent KEYCODE_VOLUME_DOWN/p;
-    s/^\x1B\\[1;5C/keyevent KEYCODE_DPAD_RIGHT/p;
-    s/^\x1B\\[1;5D/keyevent KEYCODE_DPAD_LEFT/p;
-    s/^\x1B$/keyevent KEYCODE_BACK/p;
-    s/^\x1B BACKSPACE/keyevent KEYCODE_DEL/p;
-    s/^\x1B(.*)/keyevent unknown \\1/p;
-    s/^\x14(.*)/keyevent \\1/p;
-    ' | sed -u 's/^/input keyboard /g'
-}
-
 consoleLogger() {
 
     tee /dev/stderr
 }
 
-adbShellSink() {
+bashShellSink() {
 
-    adb shell
+    bash
 }
 
-simulateAndroidInputUsingConsoleInput() {
-
-    consoleInputSource | adbShellCommandsInputSimulateTransform | consoleLogger | adbShellSink
+readSerialInput() {
+    while read -r -t 0.1; do echo -e . ; done # flush all input before we start reading from serial
+    while [[ true ]]; do
+        #read one raw line without processing basckslash escape sequences
+        read -r
+        echo $REPLY
+        sleep 0.1
+    done < $1
 }
 
-simulateAndroidInputUsingConsoleInput
+IRRemoteMediaKeySimulationTransform() {
+    # OSX Keycode mappings: http://macbiblioblog.blogspot.com/2014/12/key-codes-for-function-and-special-keys.html
+    sed -u 's/\r//' | sed -run $'s/BUTTON_VOL_PLUS/126/p;
+    s/BUTTON_VOL_MINUS/125/p;
+    ' | sed -ru "s/^(.*)/osascript -e 'tell application \"System Events\" to key code \\1'/"
+}
+
+serialInputSource() {
+    stty -f $1 $2 & readSerialInput $1
+}
+
+ESP32DEVICE=/dev/cu.SLAB_USBtoUART
+ESP8266DEVICE=$(ls /dev/cu.usbserial* | head -n1)
+BAUDRATE=9600
+
+simulateMediaInputUsingSerialInput() {
+    serialInputSource $ESP8266DEVICE $BAUDRATE | IRRemoteMediaKeySimulationTransform | consoleLogger | bash
+}
+
+simulateMediaInputUsingSerialInput
