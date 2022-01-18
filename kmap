@@ -1,0 +1,64 @@
+#!/usr/bin/env bash -e
+
+consoleInputSource() {
+    while [[ true ]]; do
+        chars=""
+        read -rd $'\0' -sn1 # read one character
+        while [[ "$REPLY" == " " || "$REPLY" == "~" || "$REPLY" > " " && "$REPLY" < "~" ]]; do
+            chars="$chars$REPLY";
+            read -rd $'\0' -t .5 -sn1 || true;
+        done # accumulate all ascii characters as one unit
+        echo "$chars"
+        chars=""
+        case "$REPLY" in
+            ($'\033')
+                chars="$REPLY"
+                while read -rd $'\0' -t .001 -sn1; do
+                    chars="$chars$REPLY";
+                done
+                echo "$chars"
+                ;;
+            ($'\n') chars=$'\x1BNEWLINE'; echo "$chars";;
+            ($'\x7f') chars=$'\x1B BACKSPACE'; echo "$chars";;
+            ($'\x14')
+                echo -n "$REPLY"
+                fzf --history=.kmap_history --history-size=100 --height=10 < keycodes.lst
+                ;;
+        esac
+    done
+}
+
+adbShellCommandsInputSimulateTransform() {
+    sed -run $'s/^([ -~]+)$/text "\\1"/p;
+    s/^\x1BNEWLINE/keyevent KEYCODE_ENTER/p;
+    s/^\x1B\\[A/keyevent KEYCODE_DPAD_UP/p;
+    s/^\x1B\\[B/keyevent KEYCODE_DPAD_DOWN/p;
+    s/^\x1B\\[C/keyevent KEYCODE_DPAD_RIGHT/p;
+    s/^\x1B\\[D/keyevent KEYCODE_DPAD_LEFT/p;
+    s/^\x1B\\[1;5A/keyevent KEYCODE_VOLUME_UP/p;
+    s/^\x1B\\[1;5B/keyevent KEYCODE_VOLUME_DOWN/p;
+    s/^\x1B\\[1;5C/keyevent KEYCODE_DPAD_RIGHT/p;
+    s/^\x1B\\[1;5D/keyevent KEYCODE_DPAD_LEFT/p;
+    s/^\x1B$/keyevent KEYCODE_BACK/p;
+    s/^\x1B BACKSPACE/keyevent KEYCODE_DEL/p;
+    s/^\x1B(.*)/keyevent unknown \\1/p;
+    s/^\x14(.*)/keyevent \\1/p;
+    ' | sed -u 's/^/input keyboard /g'
+}
+
+consoleLogger() {
+
+    tee /dev/stderr
+}
+
+adbShellSink() {
+
+    adb shell
+}
+
+simulateAndroidInputUsingConsoleInput() {
+
+    consoleInputSource | adbShellCommandsInputSimulateTransform | consoleLogger | adbShellSink
+}
+
+simulateAndroidInputUsingConsoleInput
