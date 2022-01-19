@@ -56,16 +56,8 @@ adbShellSink() {
     adb shell
 }
 
-serialInputSource() {
-    stty -f $1 $2 & cat $1
-}
-
-ESP32DEVICE=/dev/cu.SLAB_USBtoUART
-ESP8266DEVICE=$(ls /dev/cu.usbserial* | head -n1)
-BAUDRATE=9600
-
 simulateAndroidInputUsingConsoleInput() {
-    serialInputSource $ESP8266DEVICE $BAUDRATE | adbShellCommandsInputSimulateTransform | consoleLogger | adbShellSink
+    consoleInputSource | adbShellCommandsInputSimulateTransform | consoleLogger | adbShellSink
 }
 
 simulateAndroidInputUsingConsoleInput
