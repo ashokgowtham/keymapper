@@ -1,5 +1,33 @@
 #!/usr/bin/env bash -e
 
+consoleInputSource() {
+    while [[ true ]]; do
+        chars=""
+        read -rd $'\0' -sn1 # read one character
+        while [[ "$REPLY" == " " || "$REPLY" == "~" || "$REPLY" > " " && "$REPLY" < "~" ]]; do
+            chars="$chars$REPLY";
+            read -rd $'\0' -t .5 -sn1 || true;
+        done # accumulate all ascii characters as one unit
+        echo "$chars"
+        chars=""
+        case "$REPLY" in
+            ($'\033')
+                chars="$REPLY"
+                while read -rd $'\0' -t .001 -sn1; do
+                    chars="$chars$REPLY";
+                done
+                echo "$chars"
+                ;;
+            ($'\n') chars=$'\x1BNEWLINE'; echo "$chars";;
+            ($'\x7f') chars=$'\x1B BACKSPACE'; echo "$chars";;
+            ($'\x14')
+                echo -n "$REPLY"
+                fzf --history=.kmap_history --history-size=100 --height=10 < keycodes.lst
+                ;;
+        esac
+    done
+}
+
 serialInputSource() {
     # configure the serial port with the correct baudrate and start reading the input
     stty -f $1 $2 & readSerialInput $1
@@ -8,7 +36,7 @@ serialInputSource() {
 readSerialInput() {
     while read -r -t 0.1; do echo -e . ; done # flush all input before we start reading from serial
     while [[ true ]]; do
-        #read one raw line without processing basckslash escape sequences
+        #read one raw line without processing backslash escape sequences
         read -r
         echo $REPLY
         sleep 0.1
@@ -28,6 +56,21 @@ IRRemoteMediaKeySimulationTransform() {
     # This command would later be executed using bash shell
 }
 
+OrientationSensorToSpeechCommandsTransform() {
+    sed -u 's/\r//' | sed -run $'
+
+    s/0/online and available/p;
+    s/1/away from keyboard/p;
+    s/2/taking a coffee break/p;
+    s/3/taking a short nap/p;
+    s/4/taking lunch break/p;
+    s/5/done for the day/p;
+
+    ' | sed -ru "s/^(.*)/say -v daniel \"I'm \\1\"/"
+    # generate the OSX apple script command to actually simulate the key press of the corresponding keycode
+    # This command would later be executed using bash shell
+}
+
 consoleLogger() {
 
     tee /dev/stderr
@@ -40,10 +83,10 @@ bashShellSink() {
 
 ESP32DEVICE=/dev/cu.SLAB_USBtoUART
 ESP8266DEVICE=$(ls /dev/cu.usbserial* | head -n1)
-BAUDRATE=9600
+BAUDRATE=115200
 
-simulateMediaInputUsingSerialInput() {
-    serialInputSource $ESP32DEVICE $BAUDRATE | IRRemoteMediaKeySimulationTransform | consoleLogger | bashShellSink
+simulateAutomationInputUsingSerialInput() {
+    serialInputSource $ESP32DEVICE $BAUDRATE | OrientationSensorToSpeechCommandsTransform | consoleLogger | bashShellSink
 }
 
-simulateMediaInputUsingSerialInput
+simulateAutomationInputUsingSerialInput
